@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Audio Sample Generator — Bilingual (VI/EN)</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;background:#0f1724;color:#e6eef8;padding:20px}
+    .card{background:#0b1220;border-radius:12px;padding:18px;max-width:1000px;margin:12px auto;box-shadow:0 6px 24px rgba(2,6,23,.6)}
+    label{display:block;margin-top:10px;font-size:14px;cursor:help}
+    label:hover{color:#58a6ff}
+    input[type=range]{width:100%}
+    .row{display:flex;gap:12px;align-items:center}
+    .col{flex:1}
+    button{background:#1f6feb;border:none;padding:10px 14px;border-radius:8px;color:white;cursor:pointer;margin-top:10px;transition:background .2s}
+    button:hover{background:#2a7fff}
+    button.secondary{background:#334155}
+    button.secondary:hover{background:#475569}
+    .footer{font-size:13px;color:#9fb0c9;margin-top:8px}
+    .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+    input[type=number]{width:100%;padding:6px;border-radius:6px;border:1px solid #253341;background:#08101a;color:#e6eef8}
+    select{padding:6px;border-radius:6px;border:1px solid #253341;background:#08101a;color:#e6eef8;cursor:pointer}
+    .lang{float:right}
+    .info-icon{display:inline-block;margin-left:6px;color:#58a6ff;cursor:help;font-size:12px}
+    .tooltip-box{position:relative;display:inline-block}
+    .tooltip-box:hover .tooltip-text{visibility:visible;opacity:1}
+    .tooltip-text{visibility:hidden;opacity:0;position:absolute;z-index:1;background:#1c2938;color:#e6eef8;padding:8px 12px;border-radius:6px;font-size:12px;line-height:1.4;width:280px;bottom:125%;left:50%;margin-left:-140px;transition:opacity .3s;box-shadow:0 4px 12px rgba(0,0,0,.4);border:1px solid #334155}
+    .tooltip-text::after{content:"";position:absolute;top:100%;left:50%;margin-left:-5px;border-width:5px;border-style:solid;border-color:#1c2938 transparent transparent transparent}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <h2 id="title">Audio Sample Generator</h2>
+      <div class="lang">
+        <label for="langsel" style="font-size:13px;margin-right:8px;margin-top:0" id="langlabel">Ngôn ngữ</label>
+        <select id="langsel" aria-label="Select language">
+          <option value="vi">Tiếng Việt</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+    </div>
+
+    <p id="desc">Tạo và tải xuống test tone (sine/square/triangle/saw) hoặc noise. Có sẵn preset <strong>35 Hz</strong>.</p>
+
+    <div class="controls">
+      <div>
+        <label id="waveform_label" class="tooltip-box">
+          Dạng sóng
+          <span class="info-icon">ⓘ</span>
+          <span class="tooltip-text" id="waveform_tooltip"></span>
+        </label>
+        <select id="waveform">
+          <option value="sine" data-tooltip-vi="🎧 Sine (Sin) — Mượt nhất, sạch nhất. Chỉ có 1 tần số duy nhất (không có hài bậc cao). Dùng nhiều nhất cho test loa/sub. Âm thanh: 'Ùuuuuuuuu' rất êm, dễ nghe, không chói. Ứng dụng: Test bass 20Hz, 30Hz, 40Hz; đo đáp tuyến tần số; kiểm tra độ méo (THD)." data-tooltip-en="🎧 Sine (Sin) — Smoothest, cleanest. Single frequency only (no harmonics). Mostly used for testing speakers/subs. Sound: 'Ùuuuuuuuu', soft, easy to listen, not harsh. Applications: Bass test 20Hz, 30Hz, 40Hz; frequency response; THD check.">Sine (Sin)</option>
+
+          <option value="square" data-tooltip-vi="📦 Square — Rất sắc, rất gắt. Xuất hiện tần số gốc + các hài bậc lẻ (3x, 5x, 7x...). Âm thanh: kiểu 'bíp/bíp/bíp', nghe khá chói, đôi khi khó chịu. Ứng dụng: Test phản hồi tốc độ driver; test loa treble; dùng trong synth (nhạc điện tử 8-bit)." data-tooltip-en="📦 Square — Sharp, very 'edgy'. Contains fundamental + odd harmonics (3rd,5th,7th...). Sound: 'beep/beep/beep', quite harsh, sometimes annoying. Applications: Driver speed response; treble speaker test; used in synth (8-bit electronic music).">Square</option>
+
+          <option value="triangle" data-tooltip-vi="🔺 Triangle — Mềm hơn square. Có hài bậc lẻ nhưng yếu dần nhanh. Gần giống sine nhưng sắc hơn chút. Âm thanh: giữa sine và square, vẫn hơi gắt nhưng không khó chịu. Ứng dụng: Synth nhạc; test hệ thống nhưng ít dùng hơn sine." data-tooltip-en="🔺 Triangle — Softer than square. Contains odd harmonics but weaker. Close to sine but slightly sharper. Sound: between sine and square, slightly harsh but not annoying. Applications: Music synth; system test but less used than sine.">Triangle</option>
+
+          <option value="sawtooth" data-tooltip-vi="📈 Saw/Sawtooth — Có mọi bậc hài (rất giàu harmonic). Nghe đầy và căng. Âm thanh: kiểu tiếng xe tăng hoặc synth lead, dễ gây méo nếu loa/tai không tốt. Ứng dụng: Synth mạnh (EDM, lead, bass); test khả năng xử lý harmonic." data-tooltip-en="📈 Saw/Sawtooth — Contains all harmonics (very rich). Full and tense sound. Sound: like tank or synth lead, may distort if speakers/headphones are poor. Applications: Powerful synth (EDM, lead, bass); harmonic processing test.">Sawtooth</option>
+
+          <option value="noise" data-tooltip-vi="🔊 Noise — Nhiễu trắng, dùng để test tổng thể. Âm thanh: tạp âm, dùng kiểm tra đáp tuyến toàn dải. Ứng dụng: test hệ thống full-range, đo đáp tuyến tần số, kiểm tra thiết bị." data-tooltip-en="🔊 Noise — White noise, used for overall system test. Sound: random noise, used for full-range response check. Applications: Full-range system test, frequency response measurement, device check.">Noise</option>
+        </select>
+
+        <label id="freq_label" class="tooltip-box">
+          Tần số (Hz)
+          <span class="info-icon">ⓘ</span>
+          <span class="tooltip-text" id="freq_tooltip"></span>
+        </label>
+        <div style="display:flex;gap:10px;align-items:center">
+          <input type="number" id="freq" value="35" min="1" max="20000" step="1" />
+          <input type="range" id="freq_slider" value="35" min="1" max="20000" oninput="freq.value=this.value; updateFreqDisplay(this.value);" onchange="freq.value=this.value; updateFreqDisplay(this.value);" />
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center"><small id="freq_display">35 Hz</small></div>
+
+        <label id="amp_label" class="tooltip-box">
+          Biên độ (0.0 - 1.0)
+          <span class="info-icon">ⓘ</span>
+          <span class="tooltip-text" id="amp_tooltip"></span>
+        </label>
+        <input type="number" step="0.01" id="amp" value="0.8" min="0" max="1" />
+
+        <label id="dur_label" class="tooltip-box">
+          Độ dài (giây)
+          <span class="info-icon">ⓘ</span>
+          <span class="tooltip-text" id="dur_tooltip"></span>
+        </label>
+        <input type="number" id="duration" value="10" min="0.1" max="600" />
+      </div>
+
+      <div>
+        <label id="sr_label" class="tooltip-box">
+          Tần số mẫu (Hz)
+          <span class="info-icon">ⓘ</span>
+          <span class="tooltip-text" id="sr_tooltip"></span>
+        </label>
+        <select id="samplerate">
+          <option value="8000" data-tooltip-vi="8 kHz — Chất lượng điện thoại cơ bản. Chỉ đủ cho giọng nói đơn giản, âm thanh mờ và méo. Không dùng cho âm nhạc." data-tooltip-en="8 kHz — Basic telephone quality. Only for simple voice, muffled and distorted sound. Not for music.">8 kHz</option>
+          <option value="11025" data-tooltip-vi="11.025 kHz — Legacy multimedia. Dùng cho game/multimedia cũ (DOS era). Chất lượng AM radio, không rõ. Hiếm khi dùng ngày nay." data-tooltip-en="11.025 kHz — Legacy multimedia. Used for old games/multimedia (DOS era). AM radio quality, unclear. Rarely used today.">11.025 kHz</option>
+          <option value="16000" data-tooltip-vi="16 kHz — VoIP, podcast chất lượng thấp. Đủ cho giọng nói web. Âm nhạc sẽ thiếu treble và chi tiết. Tiết kiệm băng thông." data-tooltip-en="16 kHz — VoIP, low-quality podcast. Sufficient for web voice. Music lacks treble and detail. Saves bandwidth.">16 kHz</option>
+          <option value="22050" data-tooltip-vi="22.05 kHz — Web audio cũ. Chất lượng FM radio cũ. Âm thanh ổn cho giọng nói, nhạc hơi thiếu. Ít dùng hiện nay." data-tooltip-en="22.05 kHz — Old web audio. Old FM radio quality. Decent for voice, music slightly lacking. Less common now.">22.05 kHz</option>
+          <option value="32000" data-tooltip-vi="32 kHz — Video broadcast. Dùng cho DAT, NICAM TV audio. Chất lượng tốt cho video, ít dùng cho âm nhạc thuần. Chuẩn broadcast cũ." data-tooltip-en="32 kHz — Video broadcast. Used for DAT, NICAM TV audio. Good for video, less for pure music. Old broadcast standard.">32 kHz</option>
+          <option value="44100" data-tooltip-vi="44.1 kHz — CD Audio standard. Chuẩn CD âm nhạc từ thập niên 1980. Chất lượng tốt, đủ cho tai người (20Hz-20kHz). Phổ biến nhất." data-tooltip-en="44.1 kHz — CD Audio standard. Music CD standard since 1980s. Good quality, sufficient for human hearing (20Hz-20kHz). Most popular.">44.1 kHz</option>
+          <option value="48000" selected data-tooltip-vi="48 kHz ⭐ — Video/broadcast professional (khuyến nghị). Chuẩn video, film, broadcast, game. Tốt hơn 44.1kHz chút, tương thích rộng. Dùng cho test loa/sub." data-tooltip-en="48 kHz ⭐ — Video/broadcast professional (recommended). Standard for video, film, broadcast, games. Slightly better than 44.1kHz, widely compatible. Use for speaker/sub testing.">48 kHz ⭐</option>
+          <option value="88200" data-tooltip-vi="88.2 kHz — Hi-Res (2x CD). Gấp đôi 44.1kHz. Dùng mastering chuyên nghiệp, chuyển đổi xuống CD dễ. File lớn gấp đôi. Tai người khó phân biệt." data-tooltip-en="88.2 kHz — Hi-Res (2x CD). Double 44.1kHz. Professional mastering, easy CD downsampling. File 2x larger. Hard for humans to distinguish.">88.2 kHz</option>
+          <option value="96000" data-tooltip-vi="96 kHz — Studio recording. Hi-Res audio, chuẩn studio cao cấp. Chi tiết tốt hơn cho xử lý/mixing. File gấp đôi 48kHz. Lợi ích thực tế còn tranh cãi." data-tooltip-en="96 kHz — Studio recording. Hi-Res audio, high-end studio standard. Better detail for processing/mixing. File 2x 48kHz. Real benefits debated.">96 kHz</option>
+          <option value="176400" data-tooltip-vi="176.4 kHz — Hi-Res extreme (4x CD). Gấp 4 lần CD. Chỉ dùng mastering cực kỳ chuyên nghiệp. File rất lớn (4x). Tai người KHÔNG nghe ra khác biệt." data-tooltip-en="176.4 kHz — Hi-Res extreme (4x CD). 4x CD rate. Only for extremely professional mastering. Very large files (4x). Humans CANNOT hear difference.">176.4 kHz</option>
+          <option value="192000" data-tooltip-vi="192 kHz — Mastering quality. Cao nhất cho audio consumer. Chỉ cho mastering engineer chuyên sâu. File khổng lồ. Lãng phí cho test loa thông thường." data-tooltip-en="192 kHz — Mastering quality. Highest for consumer audio. Only for deep mastering engineers. Huge files. Wasteful for regular speaker testing.">192 kHz</option>
+        </select>
+
+        <label id="channels_label" class="tooltip-box">
+          Kênh
+          <span class="info-icon">ⓘ</span>
+          <span class="tooltip-text" id="channels_tooltip"></span>
+        </label>
+        <select id="channels">
+          <option value="1">Mono</option>
+          <option value="2">Stereo</option>
+        </select>
+
+        <label id="norm_label" class="tooltip-box">
+          Chuẩn hoá trước khi xuất?
+          <span class="info-icon">ⓘ</span>
+          <span class="tooltip-text" id="norm_tooltip"></span>
+        </label>
+        <select id="normalize">
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+
+        <div style="margin-top:10px">
+          <button id="play" class="tooltip-box">
+            Phát
+            <span class="tooltip-text" id="play_tooltip" style="margin-left:-140px"></span>
+          </button>
+          <button id="stop" class="secondary tooltip-box">
+            Dừng
+            <span class="tooltip-text" id="stop_tooltip" style="margin-left:-140px"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:14px">
+      <button id="download" class="tooltip-box">
+        Render & Tải xuống WAV
+        <span class="tooltip-text" id="download_tooltip" style="margin-left:-140px"></span>
+      </button>
+      <button id="preset35" class="secondary tooltip-box">
+        Preset: 35 Hz
+        <span class="tooltip-text" id="preset35_tooltip" style="margin-left:-140px"></span>
+      </button>
+    </div>
+
+    <div class="footer" id="footer">Lưu ý: trình duyệt có thể giới hạn âm lượng. Dùng file WAV để test thiết bị chính xác hơn.</div>
+  </div>
+
+  <script>
+    const strings = {
+      vi: {
+        title: 'Audio Sample Generator',
+        desc: 'Tạo và tải xuống test tone (sine/square/triangle/saw) hoặc noise. Có sẵn preset 35 Hz.',
+        waveform_label: 'Dạng sóng',
+        waveform_tooltip: 'VI: Chọn dạng sóng âm thanh. Sine mượt nhất, square sắc nhất, triangle trung bình, sawtooth giàu harmonic, noise dùng cho test tổng thể.',
+        freq_label: 'Tần số (Hz)',
+        freq_tooltip: 'VI: Độ cao/thấp của âm thanh. 20-60Hz: Bass sâu (sub), 60-250Hz: Bass trung, 250-2kHz: Midrange, 2k-8kHz: Treble, 8k-20kHz: Air/Sparkle. Con người nghe được 20Hz-20kHz.',
+        amp_label: 'Biên độ (0.0 - 1.0)',
+        amp_tooltip: 'VI: Âm lượng/độ to của tín hiệu. 0.0 = im lặng, 1.0 = tối đa. Khuyến nghị 0.7-0.9 để tránh méo (clipping). Giá trị cao có thể làm hư thiết bị!',
+        dur_label: 'Độ dài (giây)',
+        dur_tooltip: 'VI: Thời gian phát âm thanh. Test nhanh: 5-10s. Test loa kỹ: 30-60s. Test độ bền: 2-5 phút.',
+        sr_label: 'Tần số mẫu (Hz)',
+        sr_tooltip: 'VI: Số lần ghi âm thanh mỗi giây. 44.1kHz: CD standard. 48kHz: Video/broadcast standard (khuyến nghị). 96kHz+: Hi-Res audio. Cao hơn = file lớn hơn, chi tiết hơn.',
+        channels_label: 'Kênh',
+        channels_tooltip: 'VI: Mono (1 kênh): test loa đơn, sub, hoặc test kỹ thuật. Stereo (2 kênh): test tai nghe, loa stereo, hoặc test soundstage.',
+        norm_label: 'Chuẩn hoá trước khi xuất?',
+        norm_tooltip: 'VI: Tự động tăng biên độ lên mức tối đa mà không bị méo khi xuất file. Yes: File WAV sẽ to hơn. No: Giữ nguyên biên độ đã chọn. Khuyến nghị: Yes cho test, No cho dùng chuyên nghiệp.',
+        play: 'Phát',
+        play_tooltip: 'VI: Phát âm thanh trực tiếp trên trình duyệt. Chú ý: trình duyệt có thể hạn chế âm lượng hoặc tần số thấp. Để test chính xác, dùng nút "Render & Tải xuống WAV".',
+        stop: 'Dừng',
+        stop_tooltip: 'VI: Dừng phát âm thanh ngay lập tức.',
+        download: 'Render & Tải xuống WAV',
+        download_tooltip: 'VI: Tạo file WAV chất lượng cao để test chính xác trên loa/tai nghe thật. File WAV không bị nén, giữ nguyên chất lượng 100%.',
+        preset35: 'Preset: 35 Hz',
+        preset35_tooltip: 'VI: Nhanh chóng thiết lập tần số 35Hz (bass sâu) với các thông số tối ưu: Sine wave, 0.9 amplitude, 10s, 48kHz, Mono. Dùng để test subwoofer.',
+        footer: 'Lưu ý: trình duyệt có thể giới hạn âm lượng. Dùng file WAV để test thiết bị chính xác hơn.',
+        langlabel: 'Ngôn ngữ'
+      },
+      en: {
+        title: 'Audio Sample Generator',
+        desc: 'Generate and download test tones (sine/square/triangle/saw) or noise. Includes 35 Hz preset.',
+        waveform_label: 'Waveform',
+        waveform_tooltip: 'EN: Select audio waveform type. Sine is smoothest, square is sharpest, triangle is moderate, sawtooth is harmonically rich, noise for overall testing.',
+        freq_label: 'Frequency (Hz)',
+        freq_tooltip: 'EN: Pitch/tone height. 20-60Hz: Deep bass (sub), 60-250Hz: Mid-bass, 250-2kHz: Midrange, 2k-8kHz: Treble, 8k-20kHz: Air/Sparkle. Human hearing: 20Hz-20kHz.',
+        amp_label: 'Amplitude (0.0 - 1.0)',
+        amp_tooltip: 'EN: Volume/loudness of signal. 0.0 = silence, 1.0 = maximum. Recommended 0.7-0.9 to avoid clipping/distortion. High values may damage equipment!',
+        dur_label: 'Duration (seconds)',
+        dur_tooltip: 'EN: Playback time length. Quick test: 5-10s. Thorough speaker test: 30-60s. Endurance test: 2-5 minutes.',
+        sr_label: 'Sample rate (Hz)',
+        sr_tooltip: 'EN: Audio samples per second. 44.1kHz: CD standard. 48kHz: Video/broadcast standard (recommended). 96kHz+: Hi-Res audio. Higher = larger file, more detail.',
+        channels_label: 'Channel',
+        channels_tooltip: 'EN: Mono (1 channel): single speaker, sub, or technical testing. Stereo (2 channels): headphones, stereo speakers, or soundstage testing.',
+        norm_label: 'Normalize before export?',
+        norm_tooltip: 'EN: Automatically boosts audio to maximum amplitude without clipping when exporting. Yes: WAV file will be louder. No: Keeps chosen amplitude. Recommended: Yes for testing, No for professional use.',
+        play: 'Play',
+        play_tooltip: 'EN: Play audio directly in browser. Note: browsers may limit volume or low frequencies. For accurate testing, use "Render & Download WAV" button.',
+        stop: 'Stop',
+        stop_tooltip: 'EN: Stop audio playback immediately.',
+        download: 'Render & Download WAV',
+        download_tooltip: 'EN: Generate high-quality WAV file for accurate testing on real speakers/headphones. WAV is uncompressed, preserving 100% quality.',
+        preset35: 'Preset: 35 Hz',
+        preset35_tooltip: 'EN: Quickly set up 35Hz (deep bass) with optimal parameters: Sine wave, 0.9 amplitude, 10s, 48kHz, Mono. Use for subwoofer testing.',
+        footer: 'Note: browsers may limit output volume. Use WAV for accurate device testing.',
+        langlabel: 'Language'
+      }
+    };
+
+    const langSel = document.getElementById('langsel');
+    langSel.addEventListener('change', ()=>{ setLang(langSel.value); });
+
+    function setLang(l){
+      const s = strings[l];
+      document.getElementById('title').innerText = s.title;
+      document.getElementById('desc').innerHTML = s.desc;
+      document.getElementById('waveform_label').childNodes[0].textContent = s.waveform_label + ' ';
+      document.getElementById('waveform_tooltip').innerText = s.waveform_tooltip;
+      document.getElementById('freq_label').childNodes[0].textContent = s.freq_label + ' ';
+      document.getElementById('freq_tooltip').innerText = s.freq_tooltip;
+      document.getElementById('amp_label').childNodes[0].textContent = s.amp_label + ' ';
+      document.getElementById('amp_tooltip').innerText = s.amp_tooltip;
+      document.getElementById('dur_label').childNodes[0].textContent = s.dur_label + ' ';
+      document.getElementById('dur_tooltip').innerText = s.dur_tooltip;
+      document.getElementById('sr_label').childNodes[0].textContent = s.sr_label + ' ';
+      document.getElementById('sr_tooltip').innerText = s.sr_tooltip;
+      document.getElementById('channels_label').childNodes[0].textContent = s.channels_label + ' ';
+      document.getElementById('channels_tooltip').innerText = s.channels_tooltip;
+      document.getElementById('norm_label').childNodes[0].textContent = s.norm_label + ' ';
+      document.getElementById('norm_tooltip').innerText = s.norm_tooltip;
+      document.getElementById('play').childNodes[0].textContent = s.play + ' ';
+      document.getElementById('play_tooltip').innerText = s.play_tooltip;
+      document.getElementById('stop').childNodes[0].textContent = s.stop + ' ';
+      document.getElementById('stop_tooltip').innerText = s.stop_tooltip;
+      document.getElementById('download').childNodes[0].textContent = s.download + ' ';
+      document.getElementById('download_tooltip').innerText = s.download_tooltip;
+      document.getElementById('preset35').childNodes[0].textContent = s.preset35 + ' ';
+      document.getElementById('preset35_tooltip').innerText = s.preset35_tooltip;
+      document.getElementById('footer').innerText = s.footer;
+      document.getElementById('langlabel').innerText = s.langlabel;
+
+      // update waveform tooltips
+      const opts = document.querySelectorAll('#waveform option');
+      opts.forEach(opt => {
+        const vi = opt.getAttribute('data-tooltip-vi') || '';
+        const en = opt.getAttribute('data-tooltip-en') || '';
+        opt.title = (l==='vi') ? vi : en;
+      });
+      
+      // update samplerate tooltips
+      const srOpts = document.querySelectorAll('#samplerate option');
+      srOpts.forEach(opt => {
+        const vi = opt.getAttribute('data-tooltip-vi') || '';
+        const en = opt.getAttribute('data-tooltip-en') || '';
+        opt.title = (l==='vi') ? vi : en;
+      });
+    }
+
+    setLang(langSel.value);
+
+    // freq slider sync
+    const freq = document.getElementById('freq');
+    const freqSlider = document.getElementById('freq_slider');
+    const freqDisplay = document.getElementById('freq_display');
+    freq.addEventListener('input', ()=>{ freqSlider.value = freq.value; updateFreqDisplay(freq.value); });
+    function updateFreqDisplay(v){ freqDisplay.innerText = Math.round(v*10)/10 + ' Hz'; }
+
+    // play / stop / render logic
+    let realtimeCtx, osc, gainNode, noiseSource; let playing = false;
+    const waveformEl = document.getElementById('waveform');
+    const ampEl = document.getElementById('amp');
+    const durationEl = document.getElementById('duration');
+    const srEl = document.getElementById('samplerate');
+    const channelsEl = document.getElementById('channels');
+    const normalizeEl = document.getElementById('normalize');
+
+    function startRealtime() {
+      if (playing) return;
+      realtimeCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const wave = waveformEl.value;
+      const gain = parseFloat(ampEl.value);
+      const freqVal = parseFloat(freq.value);
+
+      if (wave === 'noise') {
+        const bufferSize = 2 * realtimeCtx.sampleRate;
+        const noiseBuffer = realtimeCtx.createBuffer(1, bufferSize, realtimeCtx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) output[i] = (Math.random() * 2 - 1) * gain;
+        noiseSource = realtimeCtx.createBufferSource();
+        noiseSource.buffer = noiseBuffer;
+        const loopGain = realtimeCtx.createGain();
+        loopGain.gain.value = 1.0;
+        noiseSource.connect(loopGain).connect(realtimeCtx.destination);
+        noiseSource.loop = true;
+        noiseSource.start();
+      } else {
+        osc = realtimeCtx.createOscillator();
+        osc.type = wave;
+        osc.frequency.value = freqVal;
+        gainNode = realtimeCtx.createGain();
+        gainNode.gain.value = gain;
+        osc.connect(gainNode).connect(realtimeCtx.destination);
+        osc.start();
+      }
+      playing = true;
+    }
+
+    function stopRealtime() {
+      if (!playing) return;
+      try {
+        if (osc) { osc.stop(); osc.disconnect(); osc = null; }
+        if (noiseSource) { noiseSource.stop(); noiseSource.disconnect(); noiseSource = null; }
+        if (gainNode) { gainNode.disconnect(); gainNode = null; }
+        if (realtimeCtx) { realtimeCtx.close(); realtimeCtx = null; }
+      } catch(e){console.warn(e)}
+      playing = false;
+    }
+
+    document.getElementById('play').addEventListener('click', startRealtime);
+    document.getElementById('stop').addEventListener('click', stopRealtime);
+
+    document.getElementById('preset35').addEventListener('click', ()=>{
+      waveformEl.value = 'sine'; freq.value = '35'; freqSlider.value='35'; updateFreqDisplay(35); ampEl.value='0.9'; durationEl.value='10'; srEl.value='48000'; channelsEl.value='1';
+    });
+
+    document.getElementById('download').addEventListener('click', async ()=>{
+      const wave = waveformEl.value;
+      const freqVal = parseFloat(freq.value);
+      const amp = parseFloat(ampEl.value);
+      const duration = parseFloat(durationEl.value);
+      const sampleRate = parseInt(srEl.value,10);
+      const channels = parseInt(channelsEl.value,10);
+      const doNormalize = normalizeEl.value === 'true';
+
+      const totalSamples = Math.floor(sampleRate * duration);
+      const buffers = [];
+      for (let c=0;c<channels;c++) buffers.push(new Float32Array(totalSamples));
+      for (let i=0;i<totalSamples;i++){
+        const t = i / sampleRate;
+        let v = 0;
+        if (wave === 'noise') v = (Math.random()*2 -1) * amp;
+        else {
+          const phase = 2 * Math.PI * freqVal * t;
+          switch(wave){
+            case 'sine': v = Math.sin(phase) * amp; break;
+            case 'square': v = (Math.sin(phase) >= 0 ? 1 : -1) * amp; break;
+            case 'triangle': v = (2/Math.PI) * Math.asin(Math.sin(phase)) * amp; break;
+            case 'sawtooth': v = (2/Math.PI) * (freqVal * Math.PI * (t % (1/freqVal)) - (Math.PI/2)) * amp; break;
+            default: v = Math.sin(phase) * amp;
+          }
+        }
+        for (let c=0;c<channels;c++) buffers[c][i] = v;
+      }
+
+      const fakeBuffer = { numberOfChannels: channels, length: totalSamples, sampleRate: sampleRate, getChannelData: (ch)=>buffers[ch] };
+      const wavBlob = bufferToWavBlob(fakeBuffer, doNormalize);
+      triggerDownload(wavBlob, `test-tone-${wave}-${freqVal}Hz-${duration}s.wav`);
+    });
+
+    function bufferToWavBlob(audioBuffer, normalize){
+      const numChannels = audioBuffer.numberOfChannels;
+      const sampleRate = audioBuffer.sampleRate;
+      const length = audioBuffer.length;
+      const samples = new Float32Array(length * numChannels);
+      for (let ch=0; ch<numChannels; ch++){
+        const data = audioBuffer.getChannelData(ch);
+        for (let i=0;i<length;i++) samples[i * numChannels + ch] = data[i];
+      }
+      if (normalize){ let max = 0; for (let i=0;i<samples.length;i++){ const a = Math.abs(samples[i]); if (a>max) max=a; } if (max>0){ const norm = 1.0/max; for (let i=0;i<samples.length;i++) samples[i]*=norm; } }
+      const buffer = new ArrayBuffer(44 + samples.length * 2);
+      const view = new DataView(buffer);
+      writeString(view, 0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); writeString(view, 8, 'WAVE'); writeString(view, 12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, numChannels, true); view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * numChannels * 2, true); view.setUint16(32, numChannels * 2, true); view.setUint16(34, 16, true); writeString(view, 36, 'data'); view.setUint32(40, samples.length * 2, true);
+      let offset = 44; for (let i = 0; i < samples.length; i++, offset += 2) { let s = Math.max(-1, Math.min(1, samples[i])); view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
+      return new Blob([view], { type: 'audio/wav' });
+      function writeString(view, offset, string) { for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i)); }
+    }
+
+    function triggerDownload(blob, filename){ const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.style.display='none'; a.href = url; a.download = filename; document.body.appendChild(a); a.click(); setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500); }
+
+  </script>
+</body>
+</html>
