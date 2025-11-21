@@ -91,18 +91,3 @@ WAV (uncompressed PCM)
 - Selectable bit depth
 - Mono/Stereo
 
----
-
-## 📜 License
-MIT — free to modify, fork, or embed in hardware.
-
----
-
-## ❤️ Credits
-Created with love for:
-- audio engineers  
-- speaker builders  
-- DSP testing  
-- subwoofer benchmarking  
-- tone calibration  
-- technical education  
