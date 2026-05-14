@@ -2,86 +2,57 @@
 // Note: 'strings' object is assumed to be globally available from lang.js
 
 // --- Global DOM Element Selectors ---
-// Language Selector
 const langSel = document.getElementById('langsel');
 
-// Audio Controls
 const modeEl = document.getElementById('mode');
 const waveformEl = document.getElementById('waveform');
 const freqEl = document.getElementById('freq');
 const ampEl = document.getElementById('amp');
 const durationEl = document.getElementById('duration');
-const srEl = document.getElementById('samplerate'); // Sample Rate
+const srEl = document.getElementById('samplerate');
 const channelsEl = document.getElementById('channels');
 const bitdepthEl = document.getElementById('bitdepth');
 const normalizeEl = document.getElementById('normalize');
 
-// Frequency-specific elements
 const freqSliderEl = document.getElementById('freq_slider');
 const freqDisplayEl = document.getElementById('freq_display');
 
-// Control blocks
 const singleCtrlEl = document.getElementById('singleCtrl');
 const singlePresetEl = document.getElementById('singlePreset');
 const multiCtrlEl = document.getElementById('multiCtrl');
 const sweepCtrlEl = document.getElementById('sweepCtrl');
 
-// Buttons
 const playBtn = document.getElementById('play');
 const stopBtn = document.getElementById('stop');
 const downloadBtn = document.getElementById('download');
 
 // --- Global Audio State Variables ---
 let audioContext = null;
-let currentOscillator = null; // Can be a single Osc, an array of Ocs, or a BufferSource (noise)
+let currentOscillator = null;
 let gainNode = null;
 let isPlaying = false;
 
 // --- Helper Functions ---
 
-/**
- * Updates a single element's text and tooltip based on language settings.
- * @param {string} id - The element's ID.
- * @param {object} s - The current language strings object.
- * @param {string} textKey - The key for the element's text content.
- * @param {string} tooltipKey - The key for the element's tooltip text.
- */
 function updateElementText(id, s, textKey, tooltipKey) {
   const el = document.getElementById(id);
   if (el) {
-    // For elements with a text node *and* a child element (e.g., icons, inputs)
-    // The original script targets childNodes[0] to leave space/icons intact
     if (el.childNodes.length > 0 && el.id.includes('_label') || el.id === 'play' || el.id === 'stop' || el.id === 'download') {
       el.childNodes[0].textContent = s[textKey] + ' ';
     } else {
-      // For simple text elements (title, description, static labels)
       el.innerText = s[textKey];
     }
-    
-    // Update tooltip if element exists and a tooltip key is provided
     if (tooltipKey) {
       const tooltipEl = document.getElementById(tooltipKey);
-      if (tooltipEl) {
-        tooltipEl.innerText = s[tooltipKey];
-      }
+      if (tooltipEl) tooltipEl.innerText = s[tooltipKey];
     }
   }
 }
 
-/**
- * Updates frequency display text.
- * @param {number|string} value - The current frequency value.
- */
 function updateFreqDisplay(value) {
   freqDisplayEl.innerText = Math.round(parseFloat(value) * 10) / 10 + ' Hz';
 }
 
-
-/**
- * Updates the title attribute (tooltip) for all options in a select element.
- * @param {string} selector - CSS selector for the options (e.g., '#waveform option').
- * @param {string} lang - The current language ('vi' or other, which defaults to 'en').
- */
 function updateOptionTooltips(selector, lang) {
   const opts = document.querySelectorAll(selector);
   opts.forEach(opt => {
@@ -91,75 +62,138 @@ function updateOptionTooltips(selector, lang) {
   });
 }
 
+// --- Waveform Sample Generator ---
+// FIX #1: Tách riêng hàm sinh mẫu sóng để dùng chung,
+// và sửa công thức sawtooth đúng chuẩn dựa trên phase.
+
+/**
+ * Sinh một mẫu tín hiệu tại phase cho trước.
+ * @param {string} waveform - Loại sóng: 'sine', 'square', 'triangle', 'sawtooth'.
+ * @param {number} phase - Góc pha hiện tại (radian, không giới hạn phạm vi).
+ * @param {number} amplitude - Biên độ [0..1].
+ * @returns {number} Giá trị mẫu.
+ */
+function getSample(waveform, phase, amplitude) {
+  // Chuẩn hoá phase về [0, 2π) để tính toán nhất quán
+  const p = ((phase % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  switch (waveform) {
+    case 'sine':
+      return Math.sin(p) * amplitude;
+    case 'square':
+      return (p < Math.PI ? 1 : -1) * amplitude;
+    case 'triangle':
+      // Tăng từ -1 đến +1 trong nửa đầu, giảm ngược lại
+      return (p < Math.PI
+        ? -1 + (2 / Math.PI) * p
+        : 3 - (2 / Math.PI) * p) * amplitude;
+    case 'sawtooth':
+      // FIX #1 (CORE): Công thức cũ bị sai biên độ và offset.
+      // Sawtooth chuẩn: tăng tuyến tính từ -1 đến +1 trong một chu kỳ.
+      return (-1 + p / Math.PI) * amplitude;
+    default:
+      return 0;
+  }
+}
+
+// --- Pink Noise Generator ---
+// FIX #2: Implement pink noise thực sự (xấp xỉ Voss-McCartney, lọc 1/f).
+
+/**
+ * Sinh một buffer pink noise bằng bộ lọc Voss-McCartney (xấp xỉ).
+ * Phổ công suất giảm ~3 dB/octave, khác với white noise phổ phẳng.
+ * @param {number} length - Số mẫu cần sinh.
+ * @param {number} amplitude - Biên độ tổng thể.
+ * @returns {Float32Array}
+ */
+function generatePinkNoise(length, amplitude) {
+  const buf = new Float32Array(length);
+  let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+  for (let i = 0; i < length; i++) {
+    const white = Math.random() * 2 - 1;
+    // Bộ lọc IIR 7-band xấp xỉ phổ 1/f
+    b0 = 0.99886 * b0 + white * 0.0555179;
+    b1 = 0.99332 * b1 + white * 0.0750759;
+    b2 = 0.96900 * b2 + white * 0.1538520;
+    b3 = 0.86650 * b3 + white * 0.3104856;
+    b4 = 0.55000 * b4 + white * 0.5329522;
+    b5 = -0.7616 * b5 - white * 0.0168980;
+    const pink = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
+    b6 = white * 0.115926;
+    buf[i] = Math.max(-1, Math.min(1, pink)) * amplitude;
+  }
+  return buf;
+}
+
+/**
+ * Sinh white noise buffer.
+ * @param {number} length - Số mẫu.
+ * @param {number} amplitude - Biên độ.
+ * @returns {Float32Array}
+ */
+function generateWhiteNoise(length, amplitude) {
+  const buf = new Float32Array(length);
+  for (let i = 0; i < length; i++) buf[i] = (Math.random() * 2 - 1) * amplitude;
+  return buf;
+}
+
 
 // --- Main Functions ---
 
-/**
- * Sets the language for all text content on the page.
- * @param {string} lang - The language code (e.g., 'vi', 'en').
- */
 function setLang(lang) {
   const s = strings[lang];
   if (!s) return;
 
-  // 1. Update Main UI Texts (Title, Desc, Footer, Lang Label)
   document.getElementById('title').innerText = s.title;
   document.getElementById('desc').innerText = s.desc;
   document.getElementById('footer').innerText = s.footer;
   document.getElementById('langlabel').innerText = s.langlabel;
-  
-  // 2. Update Control Labels and Tooltips
+
   const controls = [
-    { id: 'mode_label', text: 'mode_label', tooltip: 'mode_tooltip' },
+    { id: 'mode_label',     text: 'mode_label',     tooltip: 'mode_tooltip' },
     { id: 'waveform_label', text: 'waveform_label', tooltip: 'waveform_tooltip' },
-    { id: 'freq_label', text: 'freq_label', tooltip: 'freq_tooltip' },
-    { id: 'amp_label', text: 'amp_label', tooltip: 'amp_tooltip' },
-    { id: 'dur_label', text: 'dur_label', tooltip: 'dur_tooltip' },
-    { id: 'sr_label', text: 'sr_label', tooltip: 'sr_tooltip' },
+    { id: 'freq_label',     text: 'freq_label',     tooltip: 'freq_tooltip' },
+    { id: 'amp_label',      text: 'amp_label',      tooltip: 'amp_tooltip' },
+    { id: 'dur_label',      text: 'dur_label',      tooltip: 'dur_tooltip' },
+    { id: 'sr_label',       text: 'sr_label',       tooltip: 'sr_tooltip' },
     { id: 'channels_label', text: 'channels_label', tooltip: 'channels_tooltip' },
     { id: 'bitdepth_label', text: 'bitdepth_label', tooltip: 'bitdepth_tooltip' },
-    { id: 'norm_label', text: 'norm_label', tooltip: 'norm_tooltip' },
-    { id: 'play', text: 'play', tooltip: 'play_tooltip' },
-    { id: 'stop', text: 'stop', tooltip: 'stop_tooltip' },
-    { id: 'download', text: 'download', tooltip: 'download_tooltip' }
+    { id: 'norm_label',     text: 'norm_label',     tooltip: 'norm_tooltip' },
+    { id: 'play',           text: 'play',           tooltip: 'play_tooltip' },
+    { id: 'stop',           text: 'stop',           tooltip: 'stop_tooltip' },
+    { id: 'download',       text: 'download',       tooltip: 'download_tooltip' }
   ];
-
   controls.forEach(c => updateElementText(c.id, s, c.text, c.tooltip));
 
-  // 3. Update Preset Labels and Tooltips
   document.getElementById('preset_title').innerText = s.preset_title;
   ['bass', 'mid', 'treble', 'special'].forEach(label => {
     const el = document.getElementById(`${label}_label`);
     if (el) el.innerText = s[`${label}_label`];
   });
-  
-  const presets = ['20', '35', '40', '60', '80', '100', '125', '250', '315', '500', '630', '1000', '1250', '2000', '2500', '4000', '5000', '8000', '10000', '12500', '16000', 'pinknoise', 'whitenoise'];
-  
+
+  const presets = ['20','35','40','60','80','100','125','250','315','500','630',
+                   '1000','1250','2000','2500','4000','5000','8000','10000','12500','16000',
+                   'pinknoise','whitenoise'];
   presets.forEach(p => {
-    const tooltipKey = `preset${p.includes('noise') ? '_' : ''}${p}_tooltip`;
     const elId = `preset${p.includes('noise') ? '_' : ''}${p}_tooltip`;
+    const tooltipKey = elId;
     const el = document.getElementById(elId);
     if (el && s[tooltipKey]) el.innerText = s[tooltipKey];
   });
-  
-  // 4. Update Select Option Tooltips (Waveform, Samplerate, Bitdepth)
+
   updateOptionTooltips('#waveform option', lang);
   updateOptionTooltips('#samplerate option', lang);
   updateOptionTooltips('#bitdepth option', lang);
 }
 
 
-/**
- * Handles the logic for playing audio based on the current mode and settings.
- */
 function playAudio() {
   if (isPlaying) return;
-  
+
   try {
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
   } catch (e) {
-    console.error("Web Audio API is not supported in this browser.", e);
-    alert("Web Audio API is required for this feature. Please use a modern browser.");
+    console.error('Web Audio API is not supported in this browser.', e);
+    alert('Web Audio API is required for this feature. Please use a modern browser.');
     return;
   }
 
@@ -167,132 +201,125 @@ function playAudio() {
   const waveform = waveformEl.value;
   const amplitude = parseFloat(ampEl.value);
 
-  // Setup gain node
   gainNode = audioContext.createGain();
+  gainNode.gain.value = 1.0; // FIX #4: Gain node luôn = 1; biên độ đặt trực tiếp ở nguồn
   gainNode.connect(audioContext.destination);
 
   if (mode === 'single') {
     const frequency = parseFloat(freqEl.value);
-    
-    if (waveform === 'noise') {
-      // Generate White Noise Buffer
-      const buffer = audioContext.createBuffer(1, audioContext.sampleRate * 2, audioContext.sampleRate);
+
+    if (waveform === 'noise_pink' || waveform === 'noise_white' || waveform === 'noise') {
+      // FIX #2: Phân biệt pink/white noise khi phát
+      const isPink = (waveform === 'noise_pink');
+      const bufLength = audioContext.sampleRate * 2;
+      const buffer = audioContext.createBuffer(1, bufLength, audioContext.sampleRate);
       const data = buffer.getChannelData(0);
-      for (let i = 0; i < data.length; i++) {
-        data[i] = (Math.random() * 2 - 1) * amplitude;
-      }
+      const noiseData = isPink
+        ? generatePinkNoise(bufLength, amplitude)
+        : generateWhiteNoise(bufLength, amplitude);
+      data.set(noiseData);
+
       currentOscillator = audioContext.createBufferSource();
       currentOscillator.buffer = buffer;
       currentOscillator.loop = true;
       currentOscillator.connect(gainNode);
       currentOscillator.start();
-      
+
     } else {
-      // Tone (Sine, Square, Triangle, Sawtooth)
       currentOscillator = audioContext.createOscillator();
       currentOscillator.type = waveform;
       currentOscillator.frequency.value = frequency;
+      // FIX #4: amplitude đặt trên gainNode khi dùng OscillatorNode (không có gain riêng)
       gainNode.gain.value = amplitude;
       currentOscillator.connect(gainNode);
       currentOscillator.start();
     }
-    
+
   } else if (mode === 'multiple') {
     const freqInput = document.getElementById('multiFreq').value;
     const freqs = freqInput.split(',').map(x => parseFloat(x.trim())).filter(x => x > 0);
-    
     if (!freqs.length) { alert('Enter valid frequencies for Multiple mode'); return; }
-    
-    // Distribute amplitude across multiple tones to prevent clipping
-    const individualAmplitude = amplitude / Math.sqrt(freqs.length); 
-    gainNode.gain.value = individualAmplitude; 
-    
-    currentOscillator = []; // Store multiple oscillators
+
+    // FIX #4: Mỗi oscillator có GainNode riêng mang đúng biên độ,
+    // gainNode chính giữ = 1 để không nhân đôi.
+    const individualAmplitude = amplitude / Math.sqrt(freqs.length);
+    currentOscillator = [];
     freqs.forEach(f => {
       const osc = audioContext.createOscillator();
-      // Use sine wave for multiple mode if noise is selected, as standard noise is not combinable like tones
-      osc.type = (waveform === 'noise') ? 'sine' : waveform; 
+      osc.type = (waveform === 'noise' || waveform === 'noise_pink' || waveform === 'noise_white')
+        ? 'sine' : waveform;
       osc.frequency.value = f;
-      osc.connect(gainNode);
+
+      const oscGain = audioContext.createGain();
+      oscGain.gain.value = individualAmplitude;
+      osc.connect(oscGain);
+      oscGain.connect(gainNode);
       osc.start();
-      currentOscillator.push(osc);
+      currentOscillator.push({ osc, oscGain });
     });
-    
+
   } else if (mode === 'sweep') {
     const startFreq = parseFloat(document.getElementById('sweepStart').value);
     const endFreq = parseFloat(document.getElementById('sweepEnd').value);
     const sweepType = document.getElementById('sweepType').value;
     const duration = parseFloat(durationEl.value);
-    
+
     currentOscillator = audioContext.createOscillator();
-    currentOscillator.type = (waveform === 'noise') ? 'sine' : waveform;
+    currentOscillator.type = (waveform === 'noise' || waveform === 'noise_pink' || waveform === 'noise_white')
+      ? 'sine' : waveform;
     gainNode.gain.value = amplitude;
-    
-    // Apply sweep
+
     if (sweepType === 'log') {
       currentOscillator.frequency.setValueAtTime(startFreq, audioContext.currentTime);
       currentOscillator.frequency.exponentialRampToValueAtTime(endFreq, audioContext.currentTime + duration);
-    } else { // Linear
+    } else {
       currentOscillator.frequency.setValueAtTime(startFreq, audioContext.currentTime);
       currentOscillator.frequency.linearRampToValueAtTime(endFreq, audioContext.currentTime + duration);
     }
-    
+
     currentOscillator.connect(gainNode);
     currentOscillator.start();
     currentOscillator.stop(audioContext.currentTime + duration);
   }
-  
+
   isPlaying = true;
 }
 
-/**
- * Stops any playing audio and cleans up resources.
- */
+
 function stopAudio() {
   if (!isPlaying) return;
-  
+
   try {
     if (Array.isArray(currentOscillator)) {
-      currentOscillator.forEach(o => { 
-        try { o.stop(); o.disconnect(); } catch (e) { } 
-      }); 
-    } else if (currentOscillator) { 
-      try { currentOscillator.stop(); currentOscillator.disconnect(); } catch (e) { } 
+      // FIX #4: cấu trúc mảng giờ là [{osc, oscGain}, ...]
+      currentOscillator.forEach(item => {
+        const osc = item.osc || item; // tương thích ngược nếu là oscillator đơn giản
+        const g   = item.oscGain;
+        try { osc.stop(); osc.disconnect(); } catch (e) { }
+        if (g) try { g.disconnect(); } catch (e) { }
+      });
+    } else if (currentOscillator) {
+      try { currentOscillator.stop(); currentOscillator.disconnect(); } catch (e) { }
     }
-    if (gainNode) { 
-      try { gainNode.disconnect(); } catch (e) { } 
-    }
-    if (audioContext) { 
-      try { audioContext.close(); } catch (e) { } 
-    }
-  } catch (e) { 
-    console.error("Error stopping audio:", e);
+    if (gainNode) try { gainNode.disconnect(); } catch (e) { }
+    if (audioContext) try { audioContext.close(); } catch (e) { }
+  } catch (e) {
+    console.error('Error stopping audio:', e);
   }
-  
-  currentOscillator = null; 
-  gainNode = null; 
-  audioContext = null; 
+
+  currentOscillator = null;
+  gainNode = null;
+  audioContext = null;
   isPlaying = false;
 }
 
-/**
- * Utility to convert raw Float32Array audio buffers into a downloadable WAV Blob.
- * This is left mostly as-is due to the complexity of the WAV format header creation.
- * It's a standard implementation for WAV file generation.
- * * @param {Float32Array[]} buffers - Array of Float32Arrays for each channel.
- * @param {number} sampleRate - Sample rate (e.g., 44100).
- * @param {number} channels - Number of channels (1 for mono, 2 for stereo).
- * @param {number} bitDepth - Bit depth (e.g., 16, 24, 32).
- * @param {boolean} normalize - Whether to normalize the signal before saving.
- * @returns {Blob} The WAV audio file blob.
- */
+
 function toWav(buffers, sampleRate, channels, bitDepth, normalize) {
-  // Original function logic remains...
   const len = buffers[0].length;
   const samples = new Float32Array(len * channels);
   for (let c = 0; c < channels; c++) {
     const data = buffers[c];
-    for (let i = 0; i < len; i++)samples[i * channels + c] = data[i];
+    for (let i = 0; i < len; i++) samples[i * channels + c] = data[i];
   }
   if (normalize) {
     let max = 0;
@@ -302,7 +329,7 @@ function toWav(buffers, sampleRate, channels, bitDepth, normalize) {
     }
     if (max > 0) {
       const n = 1 / max;
-      for (let i = 0; i < samples.length; i++)samples[i] *= n;
+      for (let i = 0; i < samples.length; i++) samples[i] *= n;
     }
   }
   const bps = bitDepth / 8;
@@ -311,7 +338,7 @@ function toWav(buffers, sampleRate, channels, bitDepth, normalize) {
   const ds = samples.length * bps;
   const buf = new ArrayBuffer(44 + ds);
   const v = new DataView(buf);
-  const ws = (o, s) => { for (let i = 0; i < s.length; i++)v.setUint8(o + i, s.charCodeAt(i)) };
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
   ws(0, 'RIFF');
   v.setUint32(4, 36 + ds, true);
   ws(8, 'WAVE');
@@ -328,31 +355,27 @@ function toWav(buffers, sampleRate, channels, bitDepth, normalize) {
   let o = 44;
   if (bitDepth === 16) {
     for (let i = 0; i < samples.length; i++, o += 2) {
-      let s = Math.max(-1, Math.min(1, samples[i]));
+      const s = Math.max(-1, Math.min(1, samples[i]));
       v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
     }
   } else if (bitDepth === 24) {
     for (let i = 0; i < samples.length; i++, o += 3) {
-      let s = Math.max(-1, Math.min(1, samples[i]));
-      let val = Math.round(s < 0 ? s * 0x800000 : s * 0x7FFFFF);
-      v.setUint8(o, val & 0xFF);
+      const s = Math.max(-1, Math.min(1, samples[i]));
+      const val = Math.round(s < 0 ? s * 0x800000 : s * 0x7FFFFF);
+      v.setUint8(o,     val & 0xFF);
       v.setUint8(o + 1, (val >> 8) & 0xFF);
       v.setUint8(o + 2, (val >> 16) & 0xFF);
     }
   } else if (bitDepth === 32) {
     for (let i = 0; i < samples.length; i++, o += 4) {
-      let s = Math.max(-1, Math.min(1, samples[i]));
+      const s = Math.max(-1, Math.min(1, samples[i]));
       v.setInt32(o, s < 0 ? s * 0x80000000 : s * 0x7FFFFFFF, true);
     }
   }
   return new Blob([v], { type: 'audio/wav' });
 }
 
-/**
- * Utility to trigger the download of a Blob.
- * @param {Blob} blob - The file content.
- * @param {string} name - The filename.
- */
+
 function downloadFile(blob, name) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -362,146 +385,161 @@ function downloadFile(blob, name) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/**
- * Handles the logic for generating and downloading the WAV file.
- */
+
 async function downloadAudio() {
-  const mode = modeEl.value;
-  const waveform = waveformEl.value;
+  const mode      = modeEl.value;
+  const waveform  = waveformEl.value;
   const amplitude = parseFloat(ampEl.value);
-  const duration = parseFloat(durationEl.value);
+  const duration  = parseFloat(durationEl.value);
   const sampleRate = parseInt(srEl.value);
-  const channels = parseInt(channelsEl.value);
-  const bitDepth = parseInt(bitdepthEl.value);
+  const channels  = parseInt(channelsEl.value);
+  const bitDepth  = parseInt(bitdepthEl.value);
   const doNormalize = normalizeEl.value === '1';
+
+  // FIX #3: Đọc sweepType ở phạm vi hàm, không chỉ trong khối sweep,
+  // để dùng được khi đặt tên file bên dưới.
+  const sweepType = document.getElementById('sweepType')?.value || 'log';
 
   const totalSamples = Math.floor(sampleRate * duration);
   const buffers = [];
   for (let c = 0; c < channels; c++) buffers.push(new Float32Array(totalSamples));
-  
-  // Audio Generation Logic
+
   if (mode === 'single') {
     const frequency = parseFloat(freqEl.value);
-    for (let i = 0; i < totalSamples; i++) {
-      const time = i / sampleRate;
-      let value = 0;
-      
-      if (waveform === 'noise') {
-        value = (Math.random() * 2 - 1) * amplitude;
-      } else {
-        const p = 2 * Math.PI * frequency * time;
-        if (waveform === 'sine') value = Math.sin(p) * amplitude;
-        else if (waveform === 'square') value = (Math.sin(p) >= 0 ? 1 : -1) * amplitude;
-        else if (waveform === 'triangle') value = (2 / Math.PI) * Math.asin(Math.sin(p)) * amplitude;
-        else if (waveform === 'sawtooth') value = (2 / Math.PI) * (frequency * Math.PI * (time % (1 / frequency)) - (Math.PI / 2)) * amplitude;
+
+    if (waveform === 'noise_pink' || waveform === 'noise_white' || waveform === 'noise') {
+      // FIX #2: Phân biệt pink/white noise khi xuất file
+      const isPink = (waveform === 'noise_pink');
+      const noiseData = isPink
+        ? generatePinkNoise(totalSamples, amplitude)
+        : generateWhiteNoise(totalSamples, amplitude);
+      for (let c = 0; c < channels; c++) buffers[c].set(noiseData);
+
+    } else {
+      // FIX #1: Dùng getSample() với phase-accumulation thay vì công thức time-domain cũ
+      let phase = 0;
+      const phaseStep = 2 * Math.PI * frequency / sampleRate;
+      for (let i = 0; i < totalSamples; i++) {
+        const value = getSample(waveform, phase, amplitude);
+        for (let c = 0; c < channels; c++) buffers[c][i] = value;
+        phase += phaseStep;
+        if (phase >= 2 * Math.PI) phase -= 2 * Math.PI;
       }
-      for (let c = 0; c < channels; c++) buffers[c][i] = value;
     }
+
   } else if (mode === 'multiple') {
     const freqInput = document.getElementById('multiFreq').value;
     const freqs = freqInput.split(',').map(x => parseFloat(x.trim())).filter(x => x > 0);
     if (!freqs.length) { alert('Enter valid frequencies'); return; }
-    
+
     const individualAmplitude = amplitude / Math.sqrt(freqs.length);
+    // FIX #1 + #4: Dùng getSample() với phase-accumulation độc lập cho từng tần số
+    const phases = new Float64Array(freqs.length);
+    const phaseSteps = freqs.map(f => 2 * Math.PI * f / sampleRate);
+
     for (let i = 0; i < totalSamples; i++) {
-      const time = i / sampleRate;
       let value = 0;
-      freqs.forEach(f => {
-        const p = 2 * Math.PI * f * time;
-        // Use individualAmplitude here
-        if (waveform === 'sine') value += Math.sin(p) * individualAmplitude;
-        else if (waveform === 'square') value += (Math.sin(p) >= 0 ? 1 : -1) * individualAmplitude;
-        else if (waveform === 'triangle') value += (2 / Math.PI) * Math.asin(Math.sin(p)) * individualAmplitude;
-        else if (waveform === 'sawtooth') value += (2 / Math.PI) * (f * Math.PI * (time % (1 / f)) - (Math.PI / 2)) * individualAmplitude;
+      freqs.forEach((f, fi) => {
+        value += getSample(waveform === 'noise' || waveform === 'noise_pink' || waveform === 'noise_white'
+          ? 'sine' : waveform, phases[fi], individualAmplitude);
+        phases[fi] += phaseSteps[fi];
+        if (phases[fi] >= 2 * Math.PI) phases[fi] -= 2 * Math.PI;
       });
       for (let c = 0; c < channels; c++) buffers[c][i] = value;
     }
+
   } else if (mode === 'sweep') {
     const startFreq = parseFloat(document.getElementById('sweepStart').value);
-    const endFreq = parseFloat(document.getElementById('sweepEnd').value);
-    const sweepType = document.getElementById('sweepType').value;
+    const endFreq   = parseFloat(document.getElementById('sweepEnd').value);
+    // sweepType đã được đọc ở đầu hàm (FIX #3)
+
+    // FIX #1: Dùng getSample() với phase-accumulation
     let phase = 0;
-    
     for (let i = 0; i < totalSamples; i++) {
-      const time = i / sampleRate;
-      const progress = time / duration;
-      const freq = sweepType === 'log' ? startFreq * Math.pow(endFreq / startFreq, progress) : startFreq + (endFreq - startFreq) * progress;
-      
-      // Phase accumulation for smooth sweep generation
+      const progress = i / totalSamples;
+      const freq = sweepType === 'log'
+        ? startFreq * Math.pow(endFreq / startFreq, progress)
+        : startFreq + (endFreq - startFreq) * progress;
+
       phase += 2 * Math.PI * freq / sampleRate;
-      phase = phase % (2 * Math.PI); // Keep phase within bounds
-      
-      let value = 0;
-      // Note: Phase-based generation uses a different calculation for non-sine waves
-      if (waveform === 'sine') value = Math.sin(phase) * amplitude;
-      else if (waveform === 'square') value = (Math.sin(phase) >= 0 ? 1 : -1) * amplitude;
-      else if (waveform === 'triangle') value = (2 / Math.PI) * Math.asin(Math.sin(phase)) * amplitude;
-      // Adjusted sawtooth calculation based on phase, though the original was simpler (not phase-accumulating)
-      else if (waveform === 'sawtooth') value = (2 / Math.PI) * (phase - Math.PI) * amplitude; 
-      
+      if (phase >= 2 * Math.PI) phase -= 2 * Math.PI;
+
+      const value = getSample(
+        (waveform === 'noise' || waveform === 'noise_pink' || waveform === 'noise_white') ? 'sine' : waveform,
+        phase,
+        amplitude
+      );
       for (let c = 0; c < channels; c++) buffers[c][i] = value;
     }
   }
 
-  // Convert buffers to WAV blob and trigger download
   const blob = toWav(buffers, sampleRate, channels, bitDepth, doNormalize);
-  let name = 'tone';
-  if (mode === 'single') name = `tone-${waveform}-${freqEl.value}Hz`;
-  else if (mode === 'multiple') name = `multi-tone-${waveform}`;
-  else name = `sweep-${document.getElementById('sweepStart').value}-${document.getElementById('sweepEnd').value}Hz-${sweepType}`;
-  
+
+  // FIX #3: sweepType đã có trong scope, không còn lỗi ReferenceError
+  let name;
+  if (mode === 'single') {
+    const noiseLabel = waveform === 'noise_pink' ? 'pinknoise'
+                     : waveform === 'noise_white' ? 'whitenoise'
+                     : waveform === 'noise'        ? 'noise'
+                     : null;
+    name = noiseLabel
+      ? `tone-${noiseLabel}`
+      : `tone-${waveform}-${freqEl.value}Hz`;
+  } else if (mode === 'multiple') {
+    name = `multi-tone-${waveform}`;
+  } else {
+    name = `sweep-${document.getElementById('sweepStart').value}-${document.getElementById('sweepEnd').value}Hz-${sweepType}`;
+  }
+
   downloadFile(blob, `${name}-${bitDepth}bit.wav`);
 }
 
 
-/**
- * Sets the UI controls to a specific preset frequency.
- * @param {number} freq - The target frequency.
- */
 function setPreset(freq) {
   modeEl.value = 'single';
-  modeEl.dispatchEvent(new Event('change')); // Trigger mode change UI update
+  modeEl.dispatchEvent(new Event('change'));
   waveformEl.value = 'sine';
   freqEl.value = freq;
   freqSliderEl.value = freq;
   updateFreqDisplay(freq);
-  // Set amplitude based on frequency (lower for bass, general for others)
-  ampEl.value = freq < 100 ? 0.9 : 0.7; 
+  ampEl.value = freq < 100 ? 0.9 : 0.7;
   durationEl.value = 10;
   srEl.value = 48000;
   channelsEl.value = 1;
 }
 
-/**
- * Sets the UI controls to a noise (pink/white) preset.
- */
-function setNoisePreset() {
+// FIX #2: Tách hàm preset riêng cho pink noise và white noise
+function setPinkNoisePreset() {
   modeEl.value = 'single';
   modeEl.dispatchEvent(new Event('change'));
-  waveformEl.value = 'noise';
+  waveformEl.value = 'noise_pink'; // cần thêm option này vào <select id="waveform">
   ampEl.value = 0.7;
   durationEl.value = 30;
   srEl.value = 48000;
-  channelsEl.value = 2; // Noise is often used in stereo
+  channelsEl.value = 2;
 }
 
-/**
- * Sets the UI controls to a sweep tone preset.
- */
+function setWhiteNoisePreset() {
+  modeEl.value = 'single';
+  modeEl.dispatchEvent(new Event('change'));
+  waveformEl.value = 'noise_white'; // cần thêm option này vào <select id="waveform">
+  ampEl.value = 0.7;
+  durationEl.value = 30;
+  srEl.value = 48000;
+  channelsEl.value = 2;
+}
+
 function setSweepPreset() {
   modeEl.value = 'sweep';
   modeEl.dispatchEvent(new Event('change'));
   waveformEl.value = 'sine';
   document.getElementById('sweepStart').value = 20;
-  document.getElementById('sweepEnd').value = 20000;
-  document.getElementById('sweepType').value = 'log';
+  document.getElementById('sweepEnd').value   = 20000;
+  document.getElementById('sweepType').value  = 'log';
   ampEl.value = 0.7;
   durationEl.value = 30;
 }
 
-/**
- * Sets the UI controls to a multiple tone preset.
- */
 function setMultiPreset() {
   modeEl.value = 'multiple';
   modeEl.dispatchEvent(new Event('change'));
@@ -514,16 +552,9 @@ function setMultiPreset() {
 
 // --- Event Listeners ---
 
-// Language Selector
-langSel.addEventListener('change', () => { 
-  setLang(langSel.value); 
-});
-
-// Initial language setup
+langSel.addEventListener('change', () => { setLang(langSel.value); });
 setLang(langSel.value);
 
-
-// Frequency Input/Slider Sync
 [freqEl, freqSliderEl].forEach(el => {
   el.addEventListener('input', () => {
     const value = el.value;
@@ -533,47 +564,37 @@ setLang(langSel.value);
   });
 });
 
-// Mode Change Logic
 modeEl.addEventListener('change', () => {
   const mode = modeEl.value;
-  singleCtrlEl.style.display = mode === 'single' ? 'block' : 'none';
-  singlePresetEl.style.display = mode === 'single' ? 'block' : 'none';
-  multiCtrlEl.style.display = mode === 'multiple' ? 'block' : 'none';
-  sweepCtrlEl.style.display = mode === 'sweep' ? 'block' : 'none';
-  
-  // Set default duration for sweep mode
+  singleCtrlEl.style.display  = mode === 'single'   ? 'block' : 'none';
+  singlePresetEl.style.display = mode === 'single'   ? 'block' : 'none';
+  multiCtrlEl.style.display   = mode === 'multiple' ? 'block' : 'none';
+  sweepCtrlEl.style.display   = mode === 'sweep'    ? 'block' : 'none';
   if (mode === 'sweep') durationEl.value = 30;
 });
 
-
-// Play/Stop/Download Buttons
 playBtn.addEventListener('click', playAudio);
 stopBtn.addEventListener('click', stopAudio);
 downloadBtn.addEventListener('click', downloadAudio);
 
-
-// Preset Button Listeners
 const presetConfigs = {
-  // [Frequency, Amplitude]
-  preset20: [20, 0.9], preset35: [35, 0.9], preset40: [40, 0.9], preset60: [60, 0.8],
-  preset80: [80, 0.8], preset100: [100, 0.8], preset125: [125, 0.8], preset250: [250, 0.7],
-  preset315: [315, 0.7], preset500: [500, 0.7], preset630: [630, 0.7], preset1000: [1000, 0.7],
-  preset1250: [1250, 0.7], preset2000: [2000, 0.6], preset2500: [2500, 0.6], preset4000: [4000, 0.6],
-  preset5000: [5000, 0.6], preset8000: [8000, 0.5], preset10000: [10000, 0.5], preset12500: [12500, 0.5],
-  preset16000: [16000, 0.5]
+  preset20:    [20,    0.9], preset35:    [35,    0.9], preset40:    [40,    0.9],
+  preset60:    [60,    0.8], preset80:    [80,    0.8], preset100:   [100,   0.8],
+  preset125:   [125,   0.8], preset250:   [250,   0.7], preset315:   [315,   0.7],
+  preset500:   [500,   0.7], preset630:   [630,   0.7], preset1000:  [1000,  0.7],
+  preset1250:  [1250,  0.7], preset2000:  [2000,  0.6], preset2500:  [2500,  0.6],
+  preset4000:  [4000,  0.6], preset5000:  [5000,  0.6], preset8000:  [8000,  0.5],
+  preset10000: [10000, 0.5], preset12500: [12500, 0.5], preset16000: [16000, 0.5]
 };
 
 Object.keys(presetConfigs).forEach(id => {
   document.getElementById(id).addEventListener('click', () => {
     const [f, a] = presetConfigs[id];
-    setPreset(f); // Use the refactored function
-    ampEl.value = a; // Override default amplitude for specific preset config
+    setPreset(f);
+    ampEl.value = a;
   });
 });
 
-// Noise Presets (using refactored function)
-document.getElementById('preset_pinknoise').addEventListener('click', setNoisePreset);
-document.getElementById('preset_whitenoise').addEventListener('click', setNoisePreset);
-// Assuming there are buttons for Multi/Sweep presets, which weren't in the original presetConfigs
-// document.getElementById('preset_multi').addEventListener('click', setMultiPreset);
-// document.getElementById('preset_sweep').addEventListener('click', setSweepPreset);
+// FIX #2: Gán đúng hàm preset cho từng loại noise
+document.getElementById('preset_pinknoise').addEventListener('click', setPinkNoisePreset);
+document.getElementById('preset_whitenoise').addEventListener('click', setWhiteNoisePreset);
